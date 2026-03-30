@@ -11,6 +11,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 from functools import wraps
+from itertools import cycle
 from flask import g
 
 # Load Groq API keys from environment variables
