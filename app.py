@@ -12,8 +12,6 @@ from datetime import datetime
 from pathlib import Path
 from functools import wraps
 from itertools import cycle
-from flask import g
-
 # Load Groq API keys from environment variables
 # Support both individual keys and comma-separated format
 individual_keys = [
@@ -31,7 +29,7 @@ GROQ_API_KEYS = [key for key in individual_keys + comma_separated_keys if key]
 # Global key rotator
 API_KEY_ROTATOR = cycle(GROQ_API_KEYS) if GROQ_API_KEYS else None
 
-from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, send_file
+from flask import Flask, g, render_template, request, redirect, url_for, session, flash, jsonify, send_file
 from werkzeug.utils import secure_filename
 from groq import Groq, RateLimitError
 from supabase import create_client, Client
@@ -43,6 +41,11 @@ supabase: Client = create_client(url, key) if url and key else None
 
 app = Flask(__name__, static_folder='static', static_url_path='/static')
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
+
+@app.before_request
+def load_user():
+    user_profile = session.get('user_profile')
+    g.user = user_profile if user_profile else None
 
 # Configuration
 UPLOAD_FOLDER = Path('/tmp/transcription_uploads')
@@ -71,12 +74,9 @@ def login_required(f):
     """Decorator to require login for routes."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if 'user_profile' not in session:
-            flash('Please log in first.', 'warning')
+        if g.user is None:
+            flash('Please log in to access this page.', 'info')
             return redirect(url_for('login'))
-        
-        # Make user profile available in the request context
-        g.user = session['user_profile']
         return f(*args, **kwargs)
     return decorated_function
 
@@ -280,6 +280,9 @@ def health_check():
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+    if not supabase:
+        flash('Database not configured. Please contact administrator.', 'error')
+        return render_template('login.html')
     if request.method == 'POST':
         email = request.form.get('email', '').lower().strip()
         password = request.form.get('password', '')
@@ -328,7 +331,10 @@ def transcribe():
 @app.route('/api/transcribe', methods=['POST'])
 @login_required
 def api_transcribe():
-    """API endpoint for transcription with subscription checks."""
+    if not API_KEY_ROTATOR:
+        return jsonify({'error': 'Transcription service not configured. Please contact administrator.'}), 500
+
+    # Check if a file was uploaded
     if 'file' not in request.files:
         return jsonify({'error': 'No file provided'}), 400
 
