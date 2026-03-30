@@ -83,32 +83,31 @@ def login_required(f):
 
 def get_user(email: str) -> dict:
     """Fetch a user from Supabase by email, or create them if they don't exist."""
-    # Check if user exists
-    result = supabase.table('profiles').select('*').eq('email', email).execute()
-    
-    if result.data:
-        user = result.data[0]
-        # Check if usage needs to be reset (monthly cycle)
-        last_reset = datetime.fromisoformat(user['last_reset_date'])
-        if datetime.utcnow() - last_reset > timedelta(days=30):
-            # Reset usage and update the reset date
-            update_data = {
+    try:
+        # Check if user exists
+        result = supabase.table('profiles').select('*').eq('email', email).execute()
+        
+        if result.data:
+            return result.data[0]
+        else:
+            # Create new user
+            new_user = {
+                'email': email,
+                'subscription_tier': 'free',
                 'usage_seconds': 0,
                 'last_reset_date': datetime.utcnow().isoformat()
             }
-            updated_user = supabase.table('profiles').update(update_data).eq('email', email).execute()
-            return updated_user.data[0]
-        return user
-    else:
-        # User does not exist, create a new free-tier user
-        new_user_data = {
-            'email': email,
-            'subscription_tier': 'free',
-            'usage_seconds': 0,
-            'last_reset_date': datetime.utcnow().isoformat()
-        }
-        insert_result = supabase.table('profiles').insert(new_user_data).execute()
-        return insert_result.data[0]
+            
+            response = supabase.table('profiles').insert(new_user).execute()
+            return response.data[0]
+            
+    except Exception as e:
+        raise Exception(f"Error creating user: {e}")
+
+
+def get_or_create_user(email: str) -> dict:
+    """Get existing user or create new one."""
+    return get_user(email)
 
 
 def get_media_duration(file_path):
@@ -261,23 +260,30 @@ def health_check():
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    """Login page. Fetches or creates a user profile in Supabase."""
-    if not GROQ_API_KEYS or not supabase:
-        return "Server is not configured. Please contact the administrator.", 503
-
     if request.method == 'POST':
-        email = request.form.get('email', '').strip()
-        if not email:
-            flash('Please enter your email address.', 'error')
+        email = request.form.get('email', '').lower().strip()
+        password = request.form.get('password', '')
+        
+        if not email or not password:
+            flash('Please enter both email and password', 'error')
+            return render_template('login.html')
+        
+        # Simple password validation
+        if len(password) < 6:
+            flash('Password must be at least 6 characters', 'error')
             return render_template('login.html')
         
         try:
-            user_profile = get_user(email)
-            session['user_profile'] = user_profile
-            flash('Logged in successfully!', 'success')
+            # Get or create user
+            user_profile = get_or_create_user(email)
+            session['user_email'] = email
+            session['user_id'] = user_profile['id']
+            
+            flash('Successfully logged in!', 'success')
             return redirect(url_for('transcribe'))
+            
         except Exception as e:
-            flash(f'An error occurred during login: {e}', 'error')
+            flash(f'Login error: {e}', 'error')
             return render_template('login.html')
 
     return render_template('login.html')
