@@ -19,7 +19,9 @@ from flask import g
 individual_keys = [
     os.environ.get("GROQ_API_KEY_1", "").strip(),
     os.environ.get("GROQ_API_KEY_2", "").strip(),
-    os.environ.get("GROQ_API_KEY_3", "").strip()
+    os.environ.get("GROQ_API_KEY_3", "").strip(),
+    os.environ.get("GROQ_API_KEY_4", "").strip(),
+    os.environ.get("GROQ_API_KEY_5", "").strip()
 ]
 comma_separated_keys = [key.strip() for key in os.environ.get("GROQ_API_KEYS", "").split(',') if key.strip()]
 
