@@ -14,8 +14,16 @@ from functools import wraps
 from flask import g
 
 # Load Groq API keys from environment variables
-# Keys can be a comma-separated string: gsk_...,gsk_...
-GROQ_API_KEYS = [key.strip() for key in os.environ.get("GROQ_API_KEYS", "").split(',') if key.strip()]
+# Support both individual keys and comma-separated format
+individual_keys = [
+    os.environ.get("GROQ_API_KEY_1", "").strip(),
+    os.environ.get("GROQ_API_KEY_2", "").strip(),
+    os.environ.get("GROQ_API_KEY_3", "").strip()
+]
+comma_separated_keys = [key.strip() for key in os.environ.get("GROQ_API_KEYS", "").split(',') if key.strip()]
+
+# Combine both formats and remove empty keys
+GROQ_API_KEYS = [key for key in individual_keys + comma_separated_keys if key]
 
 # Global key rotator
 API_KEY_ROTATOR = cycle(GROQ_API_KEYS) if GROQ_API_KEYS else None
