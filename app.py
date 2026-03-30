@@ -294,10 +294,11 @@ def login():
             return render_template('login.html')
         
         try:
-            # Get or create user
+            # Get or create user (this works for both login and signup)
             user_profile = get_or_create_user(email)
             session['user_email'] = email
             session['user_id'] = user_profile['id']
+            session['user_profile'] = user_profile
             
             flash('Successfully logged in!', 'success')
             return redirect(url_for('transcribe'))
