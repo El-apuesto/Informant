@@ -249,6 +249,26 @@ def index():
     return redirect(url_for('login'))
 
 
+@app.route('/debug')
+def debug():
+    """Debug endpoint to check app status."""
+    return jsonify({
+        'status': 'running',
+        'static_folder': app.static_folder,
+        'static_url_path': app.static_url_path,
+        'images_exist': {
+            'logo': Path(app.static_folder + '/images/logo.png').exists(),
+            'favicon': Path(app.static_folder + '/images/favicon.png').exists(),
+            'background': Path(app.static_folder + '/images/login-background.jpg').exists()
+        },
+        'environment': {
+            'SECRET_KEY': bool(os.environ.get('SECRET_KEY')),
+            'SUPABASE_URL': bool(os.environ.get('SUPABASE_URL')),
+            'GROQ_KEYS': len([k for k in [os.environ.get(f'GROQ_API_KEY_{i}') for i in range(1, 6)] if k])
+        }
+    })
+
+
 @app.route('/api/health')
 def health_check():
     """Health check endpoint for Railway monitoring."""
