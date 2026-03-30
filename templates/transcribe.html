@@ -891,8 +891,8 @@
         function handleFile(file) {
             // iOS-specific file validation
             if (isIOS) {
-                // iPhone videos can be much larger - increase limit
-                const maxIOSFileSize = 200 * 1024 * 1024; // 200MB for iOS
+                // Transcription files can be much larger - match backend limit
+                const maxIOSFileSize = 500 * 1024 * 1024; // 500MB for iOS (matches backend)
                 if (file.size > maxIOSFileSize) {
                     showToast(`File too large for iPhone. Maximum size: ${maxIOSFileSize/1024/1024}MB`, 'error');
                     return;
