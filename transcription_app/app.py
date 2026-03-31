@@ -29,7 +29,7 @@ GROQ_API_KEYS = [key for key in individual_keys + comma_separated_keys if key]
 # Global key rotator
 API_KEY_ROTATOR = cycle(GROQ_API_KEYS) if GROQ_API_KEYS else None
 
-from flask import Flask, g, render_template, request, redirect, url_for, session, flash, jsonify, send_file
+from flask import Flask, g, render_template, request, redirect, url_for, session, flash, jsonify, send_file, send_from_directory
 from werkzeug.utils import secure_filename
 from groq import Groq, RateLimitError
 from supabase import create_client, Client
@@ -39,7 +39,7 @@ url: str = os.environ.get("SUPABASE_URL")
 key: str = os.environ.get("SUPABASE_KEY") or os.environ.get("SUPABASE_ANON_KEY")
 supabase: Client = create_client(url, key) if url and key else None
 
-app = Flask(__name__, static_folder='static', static_url_path='/static')
+app = Flask(__name__, static_folder='../static', static_url_path='/static')
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
 
 @app.before_request
@@ -325,7 +325,11 @@ def logout():
 @login_required
 def transcribe():
     """Main transcription page."""
-    return render_template('transcribe.html', user_profile=g.user)
+    return send_from_directory('../app/dist', 'index.html')
+
+@app.route('/<path:path>')
+def catch_all(path):
+    return send_from_directory('../app/dist', 'index.html')
 
 
 @app.route('/api/transcribe', methods=['POST'])
