@@ -633,35 +633,22 @@
         });
 
         function handleFile(file) {
-            // iOS-specific file validation
-            if (isIOS) {
-                // Transcription files can be much larger - match backend limit
-                const maxIOSFileSize = 500 * 1024 * 1024; // 500MB for iOS (matches backend)
-                if (file.size > maxIOSFileSize) {
-                    showToast(`File too large for iPhone. Maximum size: ${maxIOSFileSize/1024/1024}MB`, 'error');
-                    return;
-                }
-                
-                // iOS-specific supported formats
-                const iOSSupportedTypes = [
-                    'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav', 
-                    'audio/aac', 'audio/m4a', 'audio/x-m4a',
-                    'video/mp4', 'video/quicktime', 'video/3gpp'
-                ];
-                
-                if (!iOSSupportedTypes.includes(file.type)) {
-                    showToast('File type not supported on iPhone. Please use MP3, WAV, M4A, or MP4.', 'error');
-                    return;
-                }
-            } else {
-                // Desktop validation (existing logic)
-                const validAudio = ['audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/mp3', 'audio/ogg', 'audio/webm', 'audio/aac', 'audio/m4a', 'audio/x-m4a', 'audio/flac'];
-                const validVideo = ['video/mp4', 'video/webm', 'video/ogg', 'video/quicktime', 'video/x-msvideo', 'video/x-matroska', 'video/avi', 'video/flv', 'video/wmv'];
-                
-                if (![...validAudio, ...validVideo].some(type => file.type.startsWith(type.split('/')[0]))) {
-                    showToast('Invalid file type. Please upload audio or video files only.', 'error');
-                    return;
-                }
+            const supportedTypes = [
+                'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav', 'audio/aac', 'audio/m4a', 'audio/x-m4a',
+                'audio/ogg', 'audio/webm', 'audio/flac',
+                'video/mp4', 'video/quicktime', 'video/webm', 'video/ogg', 'video/x-msvideo', 'video/x-matroska',
+                'video/avi', 'video/flv', 'video/wmv', 'video/3gpp'
+            ];
+
+            if (!supportedTypes.includes(file.type)) {
+                showToast('Unsupported file type. Please use a standard audio or video format.', 'error');
+                return;
+            }
+
+            const maxFileSize = 500 * 1024 * 1024; // 500MB limit
+            if (file.size > maxFileSize) {
+                showToast(`File is too large. Maximum size is ${maxFileSize / 1024 / 1024}MB.`, 'error');
+                return;
             }
             
             currentFile = file;
