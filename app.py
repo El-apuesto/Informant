@@ -331,16 +331,38 @@ def transcribe():
 @app.route('/api/transcribe', methods=['POST'])
 @login_required
 def api_transcribe():
-    if not API_KEY_ROTATOR:
-        return jsonify({'error': 'Transcription service not configured. Please contact administrator.'}), 500
+    """Transcribe endpoint for template-based frontend with session auth."""
+    return _do_transcription(request, g.user)
 
-    # Check if a file was uploaded
+
+@app.route('/api/v1/transcribe', methods=['POST'])
+def api_v1_transcribe():
+    """Transcribe endpoint for React frontend with API key auth."""
+    # Get API key from header
+    api_key = request.headers.get('X-API-Key') or request.headers.get('x-api-key')
+    if not api_key:
+        return jsonify({'error': 'API key required. Provide X-API-Key header.'}), 401
+    
+    # Create temporary user object
+    user = {
+        'email': 'api_user',
+        'subscription_tier': 'free',
+        'usage_seconds': 0
+    }
+    
+    return _do_transcription(request, user, api_key_override=api_key)
+
+
+def _do_transcription(request, user, api_key_override=None):
+    """Shared transcription logic."""
+    if not API_KEY_ROTATOR and not api_key_override:
+        return jsonify({'error': 'Transcription service not configured.'}), 500
+
     if 'file' not in request.files:
         return jsonify({'error': 'No file provided'}), 400
 
     file = request.files['file']
     is_pro_request = request.form.get('pro', 'false').lower() == 'true'
-    user = g.user
 
     if file.filename == '' or not allowed_file(file.filename):
         return jsonify({'error': 'Invalid file selected'}), 400
@@ -354,15 +376,9 @@ def api_transcribe():
         file.save(original_path)
         media_duration = get_media_duration(original_path)
 
-        # Subscription and usage checks
-        if user['subscription_tier'] == 'free':
-            if is_pro_request:
-                return jsonify({'error': 'Pro features are for subscribers only.'}), 403
-            
-            free_tier_limit_seconds = 6 * 60
-            if user['usage_seconds'] + media_duration > free_tier_limit_seconds:
-                remaining_seconds = free_tier_limit_seconds - user['usage_seconds']
-                return jsonify({'error': f'Transcription exceeds your monthly free limit. You have {remaining_seconds:.0f} seconds remaining.'}), 403
+        # Subscription checks
+        if user['subscription_tier'] == 'free' and is_pro_request:
+            return jsonify({'error': 'Pro features are for subscribers only.'}), 403
 
         # Process file
         audio_path = original_path
@@ -371,25 +387,18 @@ def api_transcribe():
             audio_path = UPLOAD_FOLDER / audio_filename
             extract_audio_from_video(original_path, audio_path)
 
-        api_key = get_next_api_key()
+        # Use provided API key or rotate server keys
+        api_key = api_key_override or get_next_api_key()
         if not api_key:
-            return jsonify({'error': 'Server is out of available API keys.'}), 503
+            return jsonify({'error': 'No API key available.'}), 503
 
         transcription_result = transcribe_audio(audio_path, api_key)
-
-        # Update usage for free users
-        if user['subscription_tier'] == 'free':
-            new_usage = user['usage_seconds'] + media_duration
-            supabase.table('profiles').update({'usage_seconds': new_usage}).eq('email', user['email']).execute()
-            user['usage_seconds'] = new_usage # Update session user
-            session['user_profile'] = user
 
         # Build response
         response = {
             'text': transcription_result['text'],
             'segments': [],
-            'pro_results': None,
-            'user_profile': user # Send updated profile back to client
+            'pro_results': None
         }
 
         if 'segments' in transcription_result and transcription_result['segments']:
@@ -397,11 +406,6 @@ def api_transcribe():
                 {'start': seg['start'], 'end': seg['end'], 'text': seg['text']}
                 for seg in transcription_result['segments']
             ]
-
-        if is_pro_request and user['subscription_tier'] == 'pro':
-            pro_api_key = get_next_api_key()
-            if pro_api_key:
-                response['pro_results'] = process_transcription_pro(transcription_result['text'], pro_api_key)
 
         return jsonify(response)
         

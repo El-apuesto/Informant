@@ -198,3 +198,13 @@ input:focus-visible {
 body {
   overscroll-behavior-y: none;
 }
+
+/* iOS-safe toast positioning - prevents toast from being hidden behind home indicator */
+.ios-safe-toast {
+  bottom: env(safe-area-inset-bottom, 20px) !important;
+  top: auto !important;
+}
+
+.ios-safe-toast [data-sonner-toast] {
+  bottom: calc(env(safe-area-inset-bottom, 20px) + 20px) !important;
+}

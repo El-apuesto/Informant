@@ -1,8 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import './App.css'
-import { FFmpeg } from '@ffmpeg/ffmpeg'
-import { fetchFile } from '@ffmpeg/util'
-import Groq from 'groq-sdk'
 import { 
   Mic, 
   Upload, 
@@ -15,8 +12,7 @@ import {
   Loader2,
   CheckCircle,
   AlertCircle,
-  Headphones,
-  Music
+  Headphones
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -26,7 +22,6 @@ import { Progress } from '@/components/ui/progress'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from 'sonner'
 import { Toaster } from '@/components/ui/sonner';
-import './App.css';
 
 // Types
 interface User {
@@ -43,17 +38,6 @@ interface TranscriptionResult {
   }>
 }
 
-// FFmpeg singleton
-let ffmpeg: FFmpeg | null = null
-
-const getFFmpeg = async () => {
-  if (!ffmpeg) {
-    ffmpeg = new FFmpeg()
-    await ffmpeg.load()
-  }
-  return ffmpeg
-}
-
 function App() {
   // Auth state
   const [user, setUser] = useState<User | null>(null)
@@ -66,9 +50,7 @@ function App() {
   const [uploadProgress, setUploadProgress] = useState(0)
   
   // Processing state
-  const [isExtractingAudio, setIsExtractingAudio] = useState(false)
   const [isTranscribing, setIsTranscribing] = useState(false)
-  const [extractionProgress, setExtractionProgress] = useState('')
   
   // Results
   const [transcription, setTranscription] = useState<TranscriptionResult | null>(null)
@@ -153,55 +135,19 @@ function App() {
     }
   }
 
-  // Extract audio from video using FFmpeg
-  const extractAudioFromVideo = async (videoFile: File): Promise<File> => {
-    setIsExtractingAudio(true)
-    setExtractionProgress('Loading FFmpeg...')
-    
-    try {
-      const ffmpegInstance = await getFFmpeg()
-      
-      setExtractionProgress('Reading video file...')
-      const inputFileName = `input_${Date.now()}.mp4`
-      const outputFileName = `output_${Date.now()}.mp3`
-      
-      await ffmpegInstance.writeFile(inputFileName, await fetchFile(videoFile))
-      
-      setExtractionProgress('Extracting audio...')
-      await ffmpegInstance.exec([
-        '-i', inputFileName,
-        '-vn',
-        '-acodec', 'libmp3lame',
-        '-q:a', '2',
-        '-ar', '16000',
-        '-ac', '1',
-        outputFileName
-      ])
-      
-      setExtractionProgress('Finalizing...')
-      const audioData = await ffmpegInstance.readFile(outputFileName)
-      const uint8Array = new Uint8Array(audioData as Uint8Array)
-      const audioBlob = new Blob([uint8Array.buffer], { type: 'audio/mp3' })
-      const audioFile = new File([audioBlob], `${videoFile.name.replace(/\.[^/.]+$/, '')}_audio.mp3`, { type: 'audio/mp3' })
-      
-      // Cleanup
-      await ffmpegInstance.deleteFile(inputFileName)
-      await ffmpegInstance.deleteFile(outputFileName)
-      
-      return audioFile
-    } catch (err) {
-      console.error('Audio extraction error:', err)
-      throw new Error('Failed to extract audio from video. Please try a different file.')
-    } finally {
-      setIsExtractingAudio(false)
-      setExtractionProgress('')
+  // Cleanup FFmpeg on unmount
+  useEffect(() => {
+    return () => {
+      if (ffmpeg) {
+        ffmpeg = null
+      }
     }
-  }
+  }, [])
 
-  // Transcribe using Groq Whisper
-  const transcribeAudio = async (audioFile: File) => {
-    if (!user?.groqApiKey) {
-      toast.error('Groq API key not found')
+  // Transcribe using backend API
+  const transcribeFile = async (fileToTranscribe: File) => {
+    if (!user) {
+      toast.error('Not logged in')
       return
     }
 
@@ -209,81 +155,57 @@ function App() {
     setError(null)
     
     try {
-      const groq = new Groq({ 
-        apiKey: user.groqApiKey,
-        dangerouslyAllowBrowser: true 
-      })
+      const formData = new FormData()
+      formData.append('file', fileToTranscribe)
 
-      // Simulate progress
-      let progress = 0
-      const progressInterval = setInterval(() => {
-        progress += 5
-        if (progress <= 90) {
-          setUploadProgress(progress)
+      const response = await fetch('/api/v1/transcribe', {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'X-API-Key': user.groqApiKey
         }
-      }, 500)
-
-      const result = await groq.audio.transcriptions.create({
-        file: audioFile,
-        model: 'whisper-large-v3',
-        response_format: 'verbose_json',
       })
 
-      clearInterval(progressInterval)
-      setUploadProgress(100)
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Transcription failed')
+      }
 
-      // Handle the response - verbose_json returns segments
-      const verboseResult = result as any
+      const result = await response.json()
+      
       setTranscription({
         text: result.text,
-        segments: verboseResult.segments?.map((seg: any) => ({
-          start: seg.start,
-          end: seg.end,
-          text: seg.text
-        }))
+        segments: result.segments
       })
       
       toast.success('Transcription completed!')
     } catch (err: any) {
       console.error('Transcription error:', err)
-      setError(err.message || 'Failed to transcribe audio. Please check your API key and try again.')
+      setError(err.message || 'Failed to transcribe. Please try again.')
       toast.error('Transcription failed')
     } finally {
       setIsTranscribing(false)
-      setUploadProgress(0)
     }
   }
 
-  // Main transcription handler
+  // Main transcription handler - sends file directly to backend
   const handleTranscribe = async () => {
-    // iOS-specific memory management
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-    if (isIOS && file && file.size > 20 * 1024 * 1024) { // 20MB
-      toast.info('Processing large file on iPhone... This may take a moment.');
-      // @ts-ignore
-      if (window.gc) {
-        // @ts-ignore
-        window.gc(); // Force garbage collection if available
-      }
-    }
-
     if (!file) {
       toast.error('Please select a file first')
       return
     }
 
     const isVideo = file.type.startsWith('video/')
-    let audioFile = file
-
+    
     try {
-      // Extract audio if video
       if (isVideo) {
-        toast.info('Video detected. Extracting audio...')
-        audioFile = await extractAudioFromVideo(file)
+        toast.info('Sending video to server for audio extraction...')
+      } else {
+        toast.info('Sending audio for transcription...')
       }
-
-      // Transcribe audio
-      await transcribeAudio(audioFile)
+      
+      // Send file directly to backend - Python will handle video audio extraction
+      await transcribeFile(file)
     } catch (err: any) {
       setError(err.message)
       toast.error(err.message)
@@ -329,7 +251,7 @@ function App() {
   if (!user) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4">
-        <Toaster position="top-center" />
+        <Toaster position="top-center" className="ios-safe-toast" />
         <Card className="w-full max-w-md bg-white/10 backdrop-blur-lg border-white/20">
           <CardHeader className="text-center">
             <div className="mx-auto w-16 h-16 bg-gradient-to-br from-purple-500 to-pink-500 rounded-2xl flex items-center justify-center mb-4">
@@ -389,7 +311,7 @@ function App() {
   // Main App Screen
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-      <Toaster position="top-center" />
+      <Toaster position="top-center" className="ios-safe-toast" />
       
       {/* Header */}
       <header className="bg-white/5 backdrop-blur-lg border-b border-white/10">
@@ -492,13 +414,13 @@ function App() {
               <div className="flex gap-3 mt-4">
                 <Button
                   onClick={handleTranscribe}
-                  disabled={isExtractingAudio || isTranscribing}
+                  disabled={isTranscribing}
                   className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
                 >
-                  {isExtractingAudio || isTranscribing ? (
+                  {isTranscribing ? (
                     <>
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      {isExtractingAudio ? 'Extracting Audio...' : 'Transcribing...'}
+                      Transcribing...
                     </>
                   ) : (
                     <>
@@ -510,7 +432,7 @@ function App() {
                 <Button
                   variant="outline"
                   onClick={clearAll}
-                  disabled={isExtractingAudio || isTranscribing}
+                  disabled={isTranscribing}
                   className="border-white/20 text-white hover:bg-white/10"
                 >
                   <Trash2 className="w-4 h-4" />
@@ -519,11 +441,11 @@ function App() {
             )}
 
             {/* Progress */}
-            {(isExtractingAudio || isTranscribing) && (
+            {isTranscribing && (
               <div className="mt-4">
-                <Progress value={isExtractingAudio ? 50 : uploadProgress} className="h-2" />
+                <Progress value={50} className="h-2" />
                 <p className="text-center text-sm text-gray-400 mt-2">
-                  {isExtractingAudio ? extractionProgress : `Uploading and transcribing... ${uploadProgress}%`}
+                  Processing on server...
                 </p>
               </div>
             )}
