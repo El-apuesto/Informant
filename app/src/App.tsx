@@ -25,7 +25,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Progress } from '@/components/ui/progress'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from 'sonner'
-import { Toaster } from '@/components/ui/sonner'
+import { Toaster } from '@/components/ui/sonner';
+import './App.css';
 
 // Types
 interface User {
@@ -406,7 +407,16 @@ function App() {
       {/* Main Content */}
       <main className="max-w-4xl mx-auto px-4 py-8">
         {/* Upload Section */}
-        <Card className="bg-white/10 backdrop-blur-lg border-white/20 mb-6">
+        <Card 
+          className="upload-card bg-white/10 backdrop-blur-lg border-white/20 mb-6"
+          onMouseMove={(e) => {
+            const rect = e.currentTarget.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            e.currentTarget.style.setProperty('--x', `${x}px`);
+            e.currentTarget.style.setProperty('--y', `${y}px`);
+          }}
+        >
           <CardHeader>
             <CardTitle className="text-white flex items-center gap-2">
               <Upload className="w-5 h-5" />
@@ -456,14 +466,6 @@ function App() {
                 </div>
               ) : (
                 <>
-                  <div className="flex justify-center gap-4 mb-4">
-                    <div className="w-12 h-12 bg-purple-500/20 rounded-xl flex items-center justify-center">
-                      <Music className="w-6 h-6 text-purple-400" />
-                    </div>
-                    <div className="w-12 h-12 bg-pink-500/20 rounded-xl flex items-center justify-center">
-                      <FileVideo className="w-6 h-6 text-pink-400" />
-                    </div>
-                  </div>
                   <p className="text-white font-medium mb-1">
                     Click to upload or drag and drop
                   </p>

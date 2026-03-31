@@ -159,6 +159,34 @@ input[type="file"] {
   }
 }
 
+/* Upload card styles */
+.upload-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.upload-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url('/static/images/rip.JPEG');
+  background-size: cover;
+  background-position: center;
+  opacity: 0.8;
+  z-index: 0;
+  mask-image: radial-gradient(circle at var(--x) var(--y), black 0%, transparent 30%);
+  animation: reveal 10s infinite alternate;
+}
+
+@keyframes reveal {
+  from {
+    mask-size: 200%;
+  }
+  to {
+    mask-size: 600%;
+  }
+}
+
 /* Focus styles for accessibility */
 button:focus-visible,
 input:focus-visible {
