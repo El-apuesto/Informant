@@ -181,6 +181,8 @@ function App() {
       toast.success('Transcription completed!')
     } catch (err: any) {
       console.error('Transcription error:', err)
+      // DEBUG: Show error to user
+      alert('Transcription Error: ' + (err.message || 'Unknown error'))
       setError(err.message || 'Failed to transcribe. Please try again.')
       toast.error('Transcription failed')
     } finally {
