@@ -256,6 +256,17 @@ function App() {
 
   // Main transcription handler
   const handleTranscribe = async () => {
+    // iOS-specific memory management
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    if (isIOS && file && file.size > 20 * 1024 * 1024) { // 20MB
+      toast.info('Processing large file on iPhone... This may take a moment.');
+      // @ts-ignore
+      if (window.gc) {
+        // @ts-ignore
+        window.gc(); // Force garbage collection if available
+      }
+    }
+
     if (!file) {
       toast.error('Please select a file first')
       return
