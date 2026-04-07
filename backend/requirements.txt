@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+python-jose[cryptography]
+python-multipart
+aiofiles
+openai
+stripe
+supabase
+groq

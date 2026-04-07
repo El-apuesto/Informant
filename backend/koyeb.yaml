@@ -1,0 +1,31 @@
+# Koyeb Deployment Configuration
+name: n4mint-api
+
+# Build configuration
+build:
+  type: docker
+  dockerfile: Dockerfile
+
+# Runtime configuration
+ports:
+  - port: 8000
+    protocol: http
+
+# Environment variables (set these in Koyeb dashboard)
+# - SUPABASE_URL
+# - SUPABASE_SERVICE_KEY
+# - SUPABASE_JWT_SECRET
+# - STRIPE_SECRET_KEY
+# - STRIPE_PUBLISHABLE_KEY
+# - STRIPE_WEBHOOK_SECRET
+# - STRIPE_PRICE_PLUS_MONTHLY
+# - STRIPE_PRICE_PLUS_YEARLY
+# - STRIPE_PRICE_PRO_MONTHLY
+# - STRIPE_PRICE_PRO_YEARLY
+# - OPENAI_API_KEY
+
+# Health check
+healthcheck:
+  protocol: http
+  port: 8000
+  path: /
