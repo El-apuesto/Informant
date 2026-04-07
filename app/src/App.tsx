@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
+import { LandingPage } from '@/components/LandingPage';
 import { SpyChaseGame } from '@/components/SpyChaseGame';
 import { Leaderboard } from '@/components/Leaderboard';
 import { Upload, FileAudio, FileVideo, Download, LogOut, Sparkles, Zap, Film, AlertCircle, Loader2, ChevronLeft, Trophy } from 'lucide-react';
@@ -9,11 +10,11 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import './App.css';
 
-type Screen = 'auth' | 'upload' | 'processing' | 'game' | 'results';
+type Screen = 'landing' | 'auth' | 'upload' | 'processing' | 'game' | 'results';
 
 function AppContent() {
   const { isLoading, isAuthenticated, login, register, logout } = useAuth();
-  const [currentScreen, setCurrentScreen] = useState<Screen>('auth');
+  const [currentScreen, setCurrentScreen] = useState<Screen>('landing');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState('');
@@ -38,10 +39,14 @@ function AppContent() {
   const pollInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    if (isAuthenticated && currentScreen === 'auth') {
+    if (isAuthenticated && currentScreen === 'landing') {
       setCurrentScreen('upload');
     }
   }, [isAuthenticated, currentScreen]);
+
+  const handleGetStarted = () => {
+    setCurrentScreen('auth');
+  };
 
   // Poll job status
   useEffect(() => {
@@ -368,6 +373,7 @@ function AppContent() {
       )}
 
       <main className="flex-1 relative">
+        {currentScreen === 'landing' && <LandingPage onGetStarted={handleGetStarted} />}
         {currentScreen === 'auth' && renderAuth()}
         {currentScreen === 'upload' && renderUpload()}
         {currentScreen === 'game' && renderGame()}
