@@ -5,5 +5,5 @@ python-multipart
 aiofiles
 openai
 stripe
-supabase
+httpx
 groq
