@@ -1,0 +1,33 @@
+# Koyeb Frontend Deployment Configuration
+name: n4mint-frontend
+
+# Build configuration
+build:
+  type: docker
+  dockerfile: Dockerfile
+  context: .
+
+# Runtime configuration
+ports:
+  - port: 80
+    protocol: http
+
+# Environment variables
+env:
+  - name: VITE_API_URL
+    value: https://n4mint-api.koyeb.com
+  - name: VITE_SUPABASE_URL
+    value: ${SUPABASE_URL}
+  - name: VITE_SUPABASE_SERVICE_KEY
+    value: ${SUPABASE_SERVICE_KEY}
+
+# Health check
+healthcheck:
+  protocol: http
+  port: 80
+  path: /
+
+# Routes (if needed for SPA)
+routes:
+  - path: /
+    port: 80
