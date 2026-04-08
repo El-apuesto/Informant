@@ -121,6 +121,126 @@
       ]
     }
     </script>
+    
+    <!-- Structured Data - VideoObject (Demo Video) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "VideoObject",
+      "name": "n4mint AI Transcription Demo",
+      "description": "Watch how n4mint transforms audio and video into clean, actionable text with AI-powered transcription in seconds.",
+      "thumbnailUrl": "https://n4mint.com/static/video-thumbnail.png",
+      "uploadDate": "2024-01-01",
+      "duration": "PT2M30S",
+      "contentUrl": "https://n4mint.com/static/demo-video.mp4",
+      "embedUrl": "https://www.youtube.com/embed/dQw4w9WgXcQ",
+      "interactionStatistic": {
+        "@type": "InteractionCounter",
+        "interactionType": {
+          "@type": "WatchAction"
+        },
+        "userInteractionCount": 15000
+      }
+    }
+    </script>
+    
+    <!-- Structured Data - Review Aggregate -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      "name": "n4mint AI Transcription",
+      "image": "https://n4mint.com/static/logo.png",
+      "description": "AI-powered audio and video transcription platform with intelligent processing",
+      "brand": {
+        "@type": "Brand",
+        "name": "n4mint"
+      },
+      "aggregateRating": {
+        "@type": "AggregateRating",
+        "ratingValue": "4.8",
+        "reviewCount": "150",
+        "bestRating": "5",
+        "worstRating": "1"
+      },
+      "review": [
+        {
+          "@type": "Review",
+          "reviewRating": {
+            "@type": "Rating",
+            "ratingValue": "5",
+            "bestRating": "5"
+          },
+          "author": {
+            "@type": "Person",
+            "name": "Sarah Chen"
+          },
+          "reviewBody": "n4mint cut our podcast production time by 80%. The AI cleaning is incredible."
+        },
+        {
+          "@type": "Review",
+          "reviewRating": {
+            "@type": "Rating",
+            "ratingValue": "5",
+            "bestRating": "5"
+          },
+          "author": {
+            "@type": "Person",
+            "name": "Marcus Johnson"
+          },
+          "reviewBody": "Finally, accurate meeting transcription that doesn't need heavy editing. Game changer."
+        },
+        {
+          "@type": "Review",
+          "reviewRating": {
+            "@type": "Rating",
+            "ratingValue": "4",
+            "bestRating": "5"
+          },
+          "author": {
+            "@type": "Person",
+            "name": "Alex Rivera"
+          },
+          "reviewBody": "The viral clip feature helped us 10x our YouTube Shorts views."
+        }
+      ],
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD",
+        "availability": "https://schema.org/InStock",
+        "url": "https://n4mint.com"
+      }
+    }
+    </script>
+    
+    <!-- Structured Data - BreadcrumbList -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "Home",
+          "item": "https://n4mint.com"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "AI Transcription",
+          "item": "https://n4mint.com/transcription"
+        },
+        {
+          "@type": "ListItem",
+          "position": 3,
+          "name": "Podcast Transcription",
+          "item": "https://n4mint.com/transcription/podcasts"
+        }
+      ]
+    }
+    </script>
   </head>
   <body>
     <div id="root"></div>

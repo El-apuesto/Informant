@@ -53,7 +53,7 @@ export function LandingPage({ onGetStarted }: LandingPageProps) {
       role: "Product Manager"
     },
     {
-      quote: "The viral clip feature helped us 10x our YouTube Shorts views."
+      quote: "The viral clip feature helped us 10x our YouTube Shorts views.",
       author: "Alex Rivera",
       role: "Content Creator"
     }
@@ -115,7 +115,7 @@ export function LandingPage({ onGetStarted }: LandingPageProps) {
       <nav className="w-full px-6 py-4 border-b border-[#2a3b4f] bg-[#10141c]/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <img src="/static/logo.png" alt="n4mint" className="h-8" />
+            <img src="/static/logo.png" alt="n4mint" className="h-8" loading="lazy" />
             <span className="font-audiowide text-[#ffd700]">n4<span className="text-white">mint</span></span>
           </div>
           <div className="flex items-center gap-6">
