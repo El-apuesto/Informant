@@ -8,8 +8,8 @@ const urlsToCache = [
   'https://fonts.googleapis.com/css2?family=Audiowide&family=Share+Tech+Mono&display=swap'
 ];
 
-// Detect iOS
-const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+// Detect iOS in Service Worker using WorkerNavigator
+const isIOS = /iPad|iPhone|iPod/.test(self.navigator.userAgent);
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
