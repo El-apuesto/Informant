@@ -1,13 +1,15 @@
 // Service Worker for caching and performance
 const CACHE_NAME = 'n4mint-v1';
 const STATIC_CACHE = 'n4mint-static-v1';
-
 const urlsToCache = [
   '/',
   '/index.html',
   '/static/logo.png',
   'https://fonts.googleapis.com/css2?family=Audiowide&family=Share+Tech+Mono&display=swap'
 ];
+
+// Detect iOS
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -19,17 +21,27 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  const { request } = event;
+  
+  // iOS FIX: Bypass Service Worker for large uploads to avoid memory crash
+  if (isIOS && (request.method === 'POST' || request.method === 'PUT')) {
+    const contentLength = request.headers.get('content-length');
+    if (contentLength && parseInt(contentLength) > 10 * 1024 * 1024) {
+      return; // Let browser handle natively - prevents "Load failed" error
+    }
+  }
+  
   event.respondWith(
-    caches.match(event.request).then((response) => {
+    caches.match(request).then((response) => {
       if (response) {
         return response;
       }
-      return fetch(event.request).then((response) => {
+      return fetch(request).then((response) => {
         // Cache successful responses
         if (response.status === 200) {
           const responseToCache = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseToCache);
+            cache.put(request, responseToCache);
           });
         }
         return response;
