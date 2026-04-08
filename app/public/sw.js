@@ -8,9 +8,6 @@ const urlsToCache = [
   'https://fonts.googleapis.com/css2?family=Audiowide&family=Share+Tech+Mono&display=swap'
 ];
 
-// Detect iOS in Service Worker using WorkerNavigator
-const isIOS = /iPad|iPhone|iPod/.test(self.navigator.userAgent);
-
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(STATIC_CACHE).then((cache) => {
@@ -23,28 +20,31 @@ self.addEventListener('install', (event) => {
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   
-  // iOS FIX: Bypass Service Worker for large uploads to avoid memory crash
+  // iOS detection
+  const isIOS = /iPad|iPhone|iPod/.test(self.navigator?.userAgent || '');
+  
   if (isIOS && (request.method === 'POST' || request.method === 'PUT')) {
     const contentLength = request.headers.get('content-length');
     if (contentLength && parseInt(contentLength) > 10 * 1024 * 1024) {
-      return; // Let browser handle natively - prevents "Load failed" error
+      return;
     }
   }
   
   event.respondWith(
-    caches.match(request).then((response) => {
-      if (response) {
-        return response;
+    caches.match(request).then((cachedResponse) => {
+      if (cachedResponse) {
+        return cachedResponse;
       }
-      return fetch(request).then((response) => {
-        // Cache successful responses
-        if (response.status === 200) {
-          const responseToCache = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(request, responseToCache);
-          });
+      return fetch(request).then((networkResponse) => {
+        if (networkResponse.status === 200 && request.method === 'GET') {
+          const responseClone = networkResponse.clone();
+          event.waitUntil(
+            caches.open(CACHE_NAME).then((cache) => {
+              return cache.put(request, responseClone);
+            })
+          );
         }
-        return response;
+        return networkResponse;
       });
     })
   );
@@ -56,7 +56,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
-          if (cacheWhitelist.indexOf(cacheName) === -1) {
+          if (!cacheWhitelist.includes(cacheName)) {
             return caches.delete(cacheName);
           }
         })
