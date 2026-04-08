@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      - SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+      - STRIPE_PLUS_MONTHLY_PRICE_ID=${STRIPE_PLUS_MONTHLY_PRICE_ID}
+      - STRIPE_PLUS_ANNUAL_PRICE_ID=${STRIPE_PLUS_ANNUAL_PRICE_ID}
+      - STRIPE_PRO_MONTHLY_PRICE_ID=${STRIPE_PRO_MONTHLY_PRICE_ID}
+      - STRIPE_PRO_ANNUAL_PRICE_ID=${STRIPE_PRO_ANNUAL_PRICE_ID}
+      - JWT_SECRET=${JWT_SECRET}
+      - GROQ_API_KEY_1=${GROQ_API_KEY_1}
+      - GROQ_API_KEY_2=${GROQ_API_KEY_2}
+      - GROQ_API_KEY_3=${GROQ_API_KEY_3}
+      - GROQ_API_KEY_4=${GROQ_API_KEY_4}
+      - FFMPEG_PATH=ffmpeg
+    volumes:
+      - /tmp/n4mint_uploads:/tmp/n4mint_uploads
+      - /tmp/n4mint_outputs:/tmp/n4mint_outputs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  uploads:
+  outputs:
