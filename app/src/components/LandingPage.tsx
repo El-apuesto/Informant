@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { FileAudio, FileVideo, Sparkles, Zap, Film, Upload, Trophy, ArrowRight, Check, Play, Quote } from 'lucide-react';
+import { FileAudio, Sparkles, Zap, Film, Upload, ArrowRight, Check, Play, Quote } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface LandingPageProps {
