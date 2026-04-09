@@ -114,7 +114,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     try:
         print(f"JWT Secret configured: {bool(SUPABASE_JWT_SECRET)}")
         print(f"JWT Secret length: {len(SUPABASE_JWT_SECRET) if SUPABASE_JWT_SECRET else 0}")
-        payload = jwt.decode(token, SUPABASE_JWT_SECRET, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, SUPABASE_JWT_SECRET, algorithms=[ALGORITHM], options={"verify_signature": True})
         user_id: str = payload.get("sub")
         if user_id is None:
             raise HTTPException(status_code=401, detail="Invalid token")
