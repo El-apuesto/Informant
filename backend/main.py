@@ -112,18 +112,36 @@ app.add_middleware(
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
     try:
+        print(f"JWT Secret configured: {bool(SUPABASE_JWT_SECRET)}")
+        print(f"JWT Secret length: {len(SUPABASE_JWT_SECRET) if SUPABASE_JWT_SECRET else 0}")
         payload = jwt.decode(token, SUPABASE_JWT_SECRET, algorithms=[ALGORITHM])
         user_id: str = payload.get("sub")
         if user_id is None:
             raise HTTPException(status_code=401, detail="Invalid token")
         
         if supabase:
-            user_response = supabase.table("users").select("*").eq("id", user_id).single().execute()
-            if user_response.data:
-                return user_response.data
+            try:
+                user_response = supabase.table("users").select("*").eq("id", user_id).single().execute()
+                if user_response.data:
+                    return user_response.data
+            except:
+                # User doesn't exist in database yet, create them
+                try:
+                    supabase.table("users").insert({
+                        "id": user_id,
+                        "email": payload.get("email", ""),
+                        "created_at": datetime.utcnow().isoformat()
+                    }).execute()
+                    print(f"Created user record for {user_id}")
+                    return {"id": user_id, "email": payload.get("email", "")}
+                except Exception as e:
+                    print(f"Error creating user record: {e}")
+                    # Return minimal user data even if database insert fails
+                    return {"id": user_id, "email": payload.get("email", "")}
         
         return {"id": user_id, "email": payload.get("email", "")}
-    except JWTError:
+    except JWTError as e:
+        print(f"JWT decode error: {e}")
         raise HTTPException(status_code=401, detail="Invalid token")
 
 # ==================== TRANSCRIPTION ====================
