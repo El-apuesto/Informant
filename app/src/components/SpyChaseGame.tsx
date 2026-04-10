@@ -29,12 +29,6 @@ const LANE_WIDTH = CANVAS_WIDTH / LANE_COUNT;
 const PLAYER_CAR_WIDTH = 40;
 const PLAYER_CAR_HEIGHT = 70;
 
-// Responsive scaling for mobile
-const getScale = () => {
-  const maxWidth = Math.min(window.innerWidth - 20, 400);
-  return maxWidth / CANVAS_WIDTH;
-};
-
 export function SpyChaseGame({ onGameOver, isComplete }: SpyChaseGameProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number | null>(null);
