@@ -114,34 +114,50 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     try:
         print(f"JWT Secret configured: {bool(SUPABASE_JWT_SECRET)}")
         print(f"JWT Secret length: {len(SUPABASE_JWT_SECRET) if SUPABASE_JWT_SECRET else 0}")
-        # Decode without algorithm restriction first to see what's being used
-        payload = jwt.decode(token, SUPABASE_JWT_SECRET, options={"verify_signature": True})
-        print(f"JWT decoded successfully")
-        user_id: str = payload.get("sub")
-        if user_id is None:
-            raise HTTPException(status_code=401, detail="Invalid token")
         
-        if supabase:
+        # First, decode without verification to check the algorithm
+        try:
+            header = jwt.get_unverified_header(token)
+            print(f"JWT header algorithm: {header.get('alg')}")
+        except Exception as e:
+            print(f"Error reading JWT header: {e}")
+        
+        # Try multiple common algorithms
+        for algo in ["HS256", "HS384", "HS512", "RS256"]:
             try:
-                user_response = supabase.table("users").select("*").eq("id", user_id).single().execute()
-                if user_response.data:
-                    return user_response.data
-            except:
-                # User doesn't exist in database yet, create them
-                try:
-                    supabase.table("users").insert({
-                        "id": user_id,
-                        "email": payload.get("email", ""),
-                        "created_at": datetime.utcnow().isoformat()
-                    }).execute()
-                    print(f"Created user record for {user_id}")
-                    return {"id": user_id, "email": payload.get("email", "")}
-                except Exception as e:
-                    print(f"Error creating user record: {e}")
-                    # Return minimal user data even if database insert fails
-                    return {"id": user_id, "email": payload.get("email", "")}
+                payload = jwt.decode(token, SUPABASE_JWT_SECRET, algorithms=[algo], options={"verify_signature": True})
+                print(f"JWT decoded successfully with {algo}")
+                user_id: str = payload.get("sub")
+                if user_id is None:
+                    raise HTTPException(status_code=401, detail="Invalid token")
+                
+                if supabase:
+                    try:
+                        user_response = supabase.table("users").select("*").eq("id", user_id).single().execute()
+                        if user_response.data:
+                            return user_response.data
+                    except:
+                        # User doesn't exist in database yet, create them
+                        try:
+                            supabase.table("users").insert({
+                                "id": user_id,
+                                "email": payload.get("email", ""),
+                                "created_at": datetime.utcnow().isoformat()
+                            }).execute()
+                            print(f"Created user record for {user_id}")
+                            return {"id": user_id, "email": payload.get("email", "")}
+                        except Exception as e:
+                            print(f"Error creating user record: {e}")
+                            # Return minimal user data even if database insert fails
+                            return {"id": user_id, "email": payload.get("email", "")}
+                
+                return {"id": user_id, "email": payload.get("email", "")}
+            except JWTError as e:
+                print(f"Failed to decode with {algo}: {e}")
+                continue
         
-        return {"id": user_id, "email": payload.get("email", "")}
+        # If all algorithms failed
+        raise HTTPException(status_code=401, detail="Invalid token")
     except JWTError as e:
         print(f"JWT decode error: {e}")
         raise HTTPException(status_code=401, detail="Invalid token")
