@@ -29,6 +29,12 @@ const LANE_WIDTH = CANVAS_WIDTH / LANE_COUNT;
 const PLAYER_CAR_WIDTH = 40;
 const PLAYER_CAR_HEIGHT = 70;
 
+// Responsive scaling for mobile
+const getScale = () => {
+  const maxWidth = Math.min(window.innerWidth - 20, 400);
+  return maxWidth / CANVAS_WIDTH;
+};
+
 export function SpyChaseGame({ onGameOver, isComplete }: SpyChaseGameProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number | null>(null);
@@ -104,9 +110,29 @@ export function SpyChaseGame({ onGameOver, isComplete }: SpyChaseGameProps) {
 
     const state = gameStateRef.current;
 
-    // Clear canvas
-    ctx.fillStyle = '#1a1a2e';
+    // Clear canvas - sky gradient
+    const skyGradient = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
+    skyGradient.addColorStop(0, '#0a0a15');
+    skyGradient.addColorStop(0.5, '#1a1a2e');
+    skyGradient.addColorStop(1, '#2a2a3e');
+    ctx.fillStyle = skyGradient;
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+    // Draw city skyline (parallax background)
+    const skylineOffset = (state.score * 0.5) % 100;
+    ctx.fillStyle = '#151520';
+    for (let i = -1; i < 6; i++) {
+      const x = i * 80 + skylineOffset;
+      const height = 100 + Math.sin(i * 2) * 30;
+      ctx.fillRect(x, CANVAS_HEIGHT - height, 60, height);
+      // Windows
+      ctx.fillStyle = '#ffcc00';
+      if (Math.random() > 0.7) {
+        ctx.fillRect(x + 10, CANVAS_HEIGHT - height + 20, 8, 8);
+        ctx.fillRect(x + 30, CANVAS_HEIGHT - height + 40, 8, 8);
+      }
+      ctx.fillStyle = '#151520';
+    }
 
     // Draw road
     state.roadOffset = (state.roadOffset + state.speed) % 40;
@@ -124,6 +150,37 @@ export function SpyChaseGame({ onGameOver, isComplete }: SpyChaseGameProps) {
       ctx.stroke();
     }
     ctx.setLineDash([]);
+
+    // Draw street lights on sides
+    const lightOffset = (state.score * 0.3) % 60;
+    for (let i = -1; i < 8; i++) {
+      const x = i * 60 + lightOffset;
+      // Left side lights
+      ctx.fillStyle = '#222';
+      ctx.fillRect(x, 0, 4, CANVAS_HEIGHT);
+      ctx.fillStyle = '#ffcc00';
+      ctx.beginPath();
+      ctx.arc(x + 2, 50, 5, 0, Math.PI * 2);
+      ctx.fill();
+      // Light glow
+      ctx.fillStyle = 'rgba(255, 204, 0, 0.2)';
+      ctx.beginPath();
+      ctx.arc(x + 2, 50, 15, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Right side lights
+      ctx.fillStyle = '#222';
+      ctx.fillRect(CANVAS_WIDTH - x - 4, 0, 4, CANVAS_HEIGHT);
+      ctx.fillStyle = '#ffcc00';
+      ctx.beginPath();
+      ctx.arc(CANVAS_WIDTH - x - 2, 50, 5, 0, Math.PI * 2);
+      ctx.fill();
+      // Light glow
+      ctx.fillStyle = 'rgba(255, 204, 0, 0.2)';
+      ctx.beginPath();
+      ctx.arc(CANVAS_WIDTH - x - 2, 50, 15, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     // Waiting phase - informant hasn't arrived
     if (state.waitingPhase) {
@@ -348,7 +405,8 @@ export function SpyChaseGame({ onGameOver, isComplete }: SpyChaseGameProps) {
     const clientX = 'changedTouches' in e ? e.changedTouches[0].clientX : e.clientX;
     const diff = clientX - touchStartX.current;
     
-    if (Math.abs(diff) > 30) {
+    // Reduced threshold for better iOS responsiveness
+    if (Math.abs(diff) > 20) {
       if (diff > 0 && playerLane.current < LANE_COUNT - 1) {
         playerLane.current++;
       } else if (diff < 0 && playerLane.current > 0) {
@@ -386,18 +444,21 @@ export function SpyChaseGame({ onGameOver, isComplete }: SpyChaseGameProps) {
 
   return (
     <div className="w-full h-full flex flex-col items-center justify-center bg-[#080a0f]">
-      <canvas
-        ref={canvasRef}
-        width={CANVAS_WIDTH}
-        height={CANVAS_HEIGHT}
-        className="border border-[#2a3b4f] touch-none"
-        onTouchStart={handleTouchStart}
-        onTouchEnd={handleTouchEnd}
-        onMouseDown={handleTouchStart}
-        onMouseUp={handleTouchEnd}
-      />
+      <div className="relative" style={{ maxWidth: '100%', width: '400px' }}>
+        <canvas
+          ref={canvasRef}
+          width={CANVAS_WIDTH}
+          height={CANVAS_HEIGHT}
+          className="border border-[#2a3b4f] touch-none w-full h-auto"
+          style={{ touchAction: 'pan-y' }}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+          onMouseDown={handleTouchStart}
+          onMouseUp={handleTouchEnd}
+        />
+      </div>
       
-      <div className="mt-4 text-center">
+      <div className="mt-4 text-center px-4">
         <p className="text-[#3c6e47] text-xs font-mono">
           {gameState === 'waiting' ? 'AWAITING CONTACT...' : 
            gameState === 'tipped' ? 'POLICE ALERT - EVADE!' : 
