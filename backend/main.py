@@ -2,6 +2,7 @@
 n4mint - AI Transcription Platform with Spy Chase Gamification
 FastAPI Backend
 """
+import base64
 import os
 import json
 import uuid
