@@ -1,6 +1,3 @@
-n4mint Backend - FastAPI AI Transcription Service
-"""
-import base64
 import os
 import json
 import asyncio
@@ -70,9 +67,8 @@ async def get_current_user(authorization: Optional[str] = Header(None)) -> Dict[
     token = authorization.replace("Bearer ", "") if authorization.startswith("Bearer ") else authorization
     
     try:
-        secret = base64.b64decode(SUPABASE_JWT_SECRET)
-payload = jwt.decode(token, secret, algorithms=["HS256"])
-)
+        payload = jwt.decode(token, SUPABASE_JWT_SECRET, algorithms=["HS256"])
+        user_id = payload.get("sub")
         if not user_id:
             raise HTTPException(status_code=401, detail="Invalid token")
         
