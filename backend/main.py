@@ -1,3 +1,7 @@
+"""
+n4mint Backend - FastAPI AI Transcription Service
+"""
+
 import os
 import json
 import asyncio
@@ -7,7 +11,8 @@ from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Depends, BackgroundTasks, Request, Header
 from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
-from jose import jwt, JWTError
+import jwt
+from jwt.exceptions import InvalidTokenError
 from groq import Groq
 from supabase import create_client, Client
 import stripe
@@ -67,7 +72,7 @@ async def get_current_user(authorization: Optional[str] = Header(None)) -> Dict[
     token = authorization.replace("Bearer ", "") if authorization.startswith("Bearer ") else authorization
     
     try:
-        payload = jwt.decode(token, SUPABASE_JWT_SECRET, algorithms=["HS256"])
+        payload = jwt.decode(token, SUPABASE_JWT_SECRET, algorithms=["HS256"], audience="authenticated", options={"verify_aud": False})
         user_id = payload.get("sub")
         if not user_id:
             raise HTTPException(status_code=401, detail="Invalid token")
@@ -78,7 +83,7 @@ async def get_current_user(authorization: Optional[str] = Header(None)) -> Dict[
             raise HTTPException(status_code=401, detail="User not found")
         
         return {"id": user_id, "profile": profile.data, "token": token}
-    except JWTError:
+    except InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
 
