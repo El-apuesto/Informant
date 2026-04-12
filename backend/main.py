@@ -1,6 +1,3 @@
-“””
-n4mint Backend - FastAPI AI Transcription Service
-“””
 
 import os
 import base64
