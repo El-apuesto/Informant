@@ -3,6 +3,7 @@ n4mint Backend - FastAPI AI Transcription Service
 “””
 
 import os
+import base64
 import json
 import asyncio
 import uuid
@@ -78,7 +79,8 @@ raise HTTPException(status_code=401, detail=“Missing authorization header”)
 token = authorization.replace("Bearer ", "") if authorization.startswith("Bearer ") else authorization
 
 try:
-    payload = jwt.decode(token, SUPABASE_JWT_SECRET, algorithms=["HS256"], options={"verify_aud": False})
+    secret = base64.b64decode(SUPABASE_JWT_SECRET)
+    payload = jwt.decode(token, secret, algorithms=["HS256"])
     user_id = payload.get("sub")
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid token")
