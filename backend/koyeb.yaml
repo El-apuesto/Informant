@@ -1,0 +1,35 @@
+name: n4mint-backend
+routes:
+  - path: /
+    port: 8000
+ports:
+  - port: 8000
+    protocol: http
+env:
+  - name: SUPABASE_URL
+    value: ${SUPABASE_URL}
+  - name: SUPABASE_SERVICE_KEY
+    value: ${SUPABASE_SERVICE_KEY}
+  - name: SUPABASE_JWT_SECRET
+    value: ${SUPABASE_JWT_SECRET}
+
+  - name: GROQ_API_KEY_1
+    value: ${GROQ_API_KEY_1}
+  - name: GROQ_API_KEY_2
+    value: ${GROQ_API_KEY_2}
+  - name: GROQ_API_KEY_3
+    value: ${GROQ_API_KEY_3}
+  - name: STRIPE_SECRET_KEY
+    value: ${STRIPE_SECRET_KEY}
+  - name: STRIPE_WEBHOOK_SECRET
+    value: ${STRIPE_WEBHOOK_SECRET}
+  - name: STRIPE_PLUS_MONTHLY_PRICE_ID
+    value: ${STRIPE_PLUS_MONTHLY_PRICE_ID}
+  - name: STRIPE_PLUS_ANNUAL_PRICE_ID
+    value: ${STRIPE_PLUS_ANNUAL_PRICE_ID}
+  - name: STRIPE_PRO_MONTHLY_PRICE_ID
+    value: ${STRIPE_PRO_MONTHLY_PRICE_ID}
+  - name: STRIPE_PRO_ANNUAL_PRICE_ID
+    value: ${STRIPE_PRO_ANNUAL_PRICE_ID}
+  - name: APP_URL
+    value: ${APP_URL}
