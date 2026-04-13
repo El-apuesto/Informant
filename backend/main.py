@@ -3,6 +3,8 @@ n4mint Backend - FastAPI AI Transcription Service
 """
 
 import os
+from dotenv import load_dotenv
+load_dotenv()
 import json
 import asyncio
 import uuid
