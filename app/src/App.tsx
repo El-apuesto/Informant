@@ -209,16 +209,23 @@ function AppDashboard() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [showPricing, setShowPricing] = useState(false);
   const [newJobId, setNewJobId] = useState<string | null>(null);
+  const [showUpgradeToast, setShowUpgradeToast] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     if (params.get('upgraded') === '1') {
-      alert(`Welcome to ${profile?.subscription_tier === 'pro' ? 'Handler' : 'Field Agent'}!`);
+      setShowUpgradeToast(true);
+      // Refresh profile to get updated tier
+      if (session?.access_token) {
+        api.getMe(session.access_token).then(setProfile);
+      }
       navigate('/app', { replace: true });
+      // Auto-hide toast after 5 seconds
+      setTimeout(() => setShowUpgradeToast(false), 5000);
     }
-  }, [location, profile, navigate]);
+  }, [location, session, navigate]);
 
   useEffect(() => {
     if (session?.access_token) {
@@ -266,6 +273,24 @@ function AppDashboard() {
         <UploadPanel tier={profile?.subscription_tier || 'free'} onUploadStart={handleUploadStart} />
         <ResultsPanel newJobId={newJobId} />
       </main>
+
+      {/* Upgrade Toast Notification */}
+      {showUpgradeToast && (
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 animate-fade-up">
+          <div className="surface border-neon-red px-6 py-4 flex items-center gap-3">
+            <div className="pulse-dot" />
+            <span className="font-display font-semibold text-chrome tracking-wider">
+              Welcome to {profile?.subscription_tier === 'pro' ? 'Handler' : 'Field Agent'}!
+            </span>
+            <button 
+              onClick={() => setShowUpgradeToast(false)}
+              className="text-chrome-dim hover:text-neon-red ml-2"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
 
       <PricingModal isOpen={showPricing} onClose={() => setShowPricing(false)} />
     </div>

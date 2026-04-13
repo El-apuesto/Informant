@@ -94,8 +94,8 @@ export function UploadPanel({ tier, onUploadStart }: UploadPanelProps) {
         onDrop={handleDrop}
         className={`drop-zone rounded p-8 text-center cursor-pointer transition-all ${
           isDragging ? 'drag-over' : ''
-        }`}
-        onClick={() => document.getElementById('file-input')?.click()}
+        } ${isUploading ? 'pointer-events-none opacity-70' : ''}`}
+        onClick={() => !isUploading && document.getElementById('file-input')?.click()}
       >
         <input
           id="file-input"

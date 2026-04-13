@@ -1,5 +1,3 @@
-import { useState, useEffect } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
 import { api, type Job } from '@/services/api';
 
 interface JobCardProps {
@@ -27,30 +25,7 @@ const OUTPUT_LABELS: Record<string, string> = {
   clips: 'CLIPS',
 };
 
-export function JobCard({ job: initialJob }: JobCardProps) {
-  const [job, setJob] = useState<Job>(initialJob);
-  const { session } = useAuth();
-
-  useEffect(() => {
-    if (job.status !== 'processing' && job.status !== 'queued') return;
-    if (!session?.access_token) return;
-
-    const interval = setInterval(async () => {
-      try {
-        const updated = await api.getJob(job.id, session.access_token);
-        setJob(updated);
-        
-        if (updated.status === 'completed' || updated.status === 'failed') {
-          clearInterval(interval);
-        }
-      } catch (err) {
-        console.error('Failed to poll job:', err);
-      }
-    }, 3000);
-
-    return () => clearInterval(interval);
-  }, [job.id, job.status, session?.access_token]);
-
+export function JobCard({ job }: JobCardProps) {
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
     return date.toLocaleDateString('en-US', {

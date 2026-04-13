@@ -3,8 +3,6 @@ n4mint Backend - FastAPI AI Transcription Service
 """
 
 import os
-from dotenv import load_dotenv
-load_dotenv()
 import json
 import asyncio
 import uuid
@@ -80,6 +78,13 @@ def verify_jwt_token(token: str) -> Dict[str, Any]:
         header_json = base64.urlsafe_b64decode(header_b64 + "==").decode("utf-8")
         header = json.loads(header_json)
         
+        # Reject tokens with alg: "none" (security vulnerability)
+        alg = header.get("alg")
+        if alg == "none":
+            raise ValueError("Algorithm 'none' is not allowed")
+        if alg != "HS256":
+            raise ValueError(f"Unsupported algorithm: {alg}")
+        
         payload_json = base64.urlsafe_b64decode(payload_b64 + "==").decode("utf-8")
         payload = json.loads(payload_json)
         
@@ -87,14 +92,16 @@ def verify_jwt_token(token: str) -> Dict[str, Any]:
         if exp and datetime.utcnow().timestamp() > exp:
             raise ValueError("Token expired")
         
-        if header.get("alg") == "HS256":
-            message = f"{header_b64}.{payload_b64}".encode("utf-8")
-            key = SUPABASE_JWT_SECRET.encode("utf-8")
-            expected_sig = base64.urlsafe_b64encode(
-                hmac.new(key, message, hashlib.sha256).digest()
-            ).decode("utf-8").rstrip("=")
-            if signature_b64 != expected_sig:
-                raise ValueError("Invalid signature")
+        # Verify signature with timing-safe comparison
+        message = f"{header_b64}.{payload_b64}".encode("utf-8")
+        key = SUPABASE_JWT_SECRET.encode("utf-8")
+        expected_sig = base64.urlsafe_b64encode(
+            hmac.new(key, message, hashlib.sha256).digest()
+        ).decode("utf-8").rstrip("=")
+        
+        # Use hmac.compare_digest for timing-safe comparison
+        if not hmac.compare_digest(signature_b64, expected_sig):
+            raise ValueError("Invalid signature")
         
         return payload
     except Exception as e:
@@ -213,20 +220,12 @@ async def get_plans():
             "price_ids": {
                 "monthly": STRIPE_PLUS_MONTHLY_PRICE_ID,
                 "annual": STRIPE_PLUS_ANNUAL_PRICE_ID
-            },
-            "priceIds": {
-                "monthly": STRIPE_PLUS_MONTHLY_PRICE_ID,
-                "annual": STRIPE_PLUS_ANNUAL_PRICE_ID
             }
         },
         "pro": {
             "monthly": 24,
             "annual": 200,
             "price_ids": {
-                "monthly": STRIPE_PRO_MONTHLY_PRICE_ID,
-                "annual": STRIPE_PRO_ANNUAL_PRICE_ID
-            },
-            "priceIds": {
                 "monthly": STRIPE_PRO_MONTHLY_PRICE_ID,
                 "annual": STRIPE_PRO_ANNUAL_PRICE_ID
             }
@@ -497,6 +496,15 @@ async def create_checkout_session(data: dict, user: Dict = Depends(get_current_u
         raise HTTPException(status_code=400, detail=str(e))
 
 
+def get_tier_from_price_id(price_id: str) -> str:
+    """Determine subscription tier from Stripe price ID."""
+    if price_id in [STRIPE_PLUS_MONTHLY_PRICE_ID, STRIPE_PLUS_ANNUAL_PRICE_ID]:
+        return "plus"
+    elif price_id in [STRIPE_PRO_MONTHLY_PRICE_ID, STRIPE_PRO_ANNUAL_PRICE_ID]:
+        return "pro"
+    return "free"
+
+
 # Stripe webhook
 @app.post("/stripe-webhook")
 async def stripe_webhook(request: Request):
@@ -507,28 +515,46 @@ async def stripe_webhook(request: Request):
         event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
     except stripe.error.SignatureVerificationError:
         raise HTTPException(status_code=400, detail="Invalid signature")
-    except Exception:
-        raise HTTPException(status_code=400, detail="Webhook error")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Webhook error: {str(e)}")
 
-    if event["type"] == "checkout.session.completed":
+    event_type = event["type"]
+    
+    if event_type == "checkout.session.completed":
         session = event["data"]["object"]
         user_id = session.get("metadata", {}).get("user_id")
         price_id = session.get("metadata", {}).get("price_id")
         customer_id = session.get("customer")
 
-        tier = "free"
-        if price_id in [STRIPE_PLUS_MONTHLY_PRICE_ID, STRIPE_PLUS_ANNUAL_PRICE_ID]:
-            tier = "plus"
-        elif price_id in [STRIPE_PRO_MONTHLY_PRICE_ID, STRIPE_PRO_ANNUAL_PRICE_ID]:
-            tier = "pro"
+        # Return error if user_id is missing (don't fail silently)
+        if not user_id:
+            raise HTTPException(status_code=400, detail="Missing user_id in session metadata")
+        
+        if not price_id:
+            raise HTTPException(status_code=400, detail="Missing price_id in session metadata")
 
-        if user_id:
-            supabase.table("profiles").update({
-                "subscription_tier": tier,
-                "stripe_customer_id": customer_id
-            }).eq("id", user_id).execute()
+        tier = get_tier_from_price_id(price_id)
+        
+        supabase.table("profiles").update({
+            "subscription_tier": tier,
+            "stripe_customer_id": customer_id
+        }).eq("id", user_id).execute()
 
-    elif event["type"] == "customer.subscription.deleted":
+    elif event_type == "customer.subscription.updated":
+        subscription = event["data"]["object"]
+        customer_id = subscription.get("customer")
+        
+        # Get the price ID from the subscription items
+        items = subscription.get("items", {}).get("data", [])
+        if items:
+            price_id = items[0].get("price", {}).get("id")
+            if price_id and customer_id:
+                tier = get_tier_from_price_id(price_id)
+                supabase.table("profiles").update({
+                    "subscription_tier": tier
+                }).eq("stripe_customer_id", customer_id).execute()
+
+    elif event_type == "customer.subscription.deleted":
         subscription = event["data"]["object"]
         customer_id = subscription.get("customer")
 
@@ -537,7 +563,7 @@ async def stripe_webhook(request: Request):
                 "subscription_tier": "free"
             }).eq("stripe_customer_id", customer_id).execute()
 
-    return {"status": "ok"}
+    return {"status": "ok", "event": event_type}
 
 
 if __name__ == "__main__":

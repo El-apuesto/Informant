@@ -1,6 +1,5 @@
-import { useEffect, useState } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/contexts/AuthContext';
+import { useEffect, useState, useCallback } from 'react';
+import { useAuth, supabase } from '@/contexts/AuthContext';
 import type { Job } from '@/services/api';
 import { JobCard } from './JobCard';
 
@@ -13,8 +12,8 @@ export function ResultsPanel({ newJobId }: ResultsPanelProps) {
   const [isLoading, setIsLoading] = useState(true);
   const { session, user } = useAuth();
 
-  const fetchJobs = async () => {
-    if (!session?.access_token || !user) return;
+  const fetchJobs = useCallback(async () => {
+    if (!session?.access_token || !user || !supabase) return;
 
     try {
       const { data, error } = await supabase
@@ -30,17 +29,34 @@ export function ResultsPanel({ newJobId }: ResultsPanelProps) {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  useEffect(() => {
-    fetchJobs();
   }, [session, user]);
 
+  // Initial fetch
+  useEffect(() => {
+    fetchJobs();
+  }, [fetchJobs]);
+
+  // Refetch when new job added
   useEffect(() => {
     if (newJobId) {
       fetchJobs();
     }
-  }, [newJobId]);
+  }, [newJobId, fetchJobs]);
+
+  // Poll for active jobs only (single interval for all jobs)
+  useEffect(() => {
+    if (!session?.access_token) return;
+    
+    const hasActiveJobs = jobs.some(j => j.status === 'processing' || j.status === 'queued');
+    if (!hasActiveJobs) return;
+
+    const interval = setInterval(async () => {
+      // Only fetch from Supabase (no individual API calls)
+      await fetchJobs();
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [jobs, session?.access_token, fetchJobs]);
 
   if (isLoading) {
     return (

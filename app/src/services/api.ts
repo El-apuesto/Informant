@@ -25,8 +25,8 @@ export interface Profile {
 
 export interface Plans {
   free: { monthly: number; annual: number };
-  plus: { monthly: number; annual: number; price_ids: { monthly: string; annual: string }; priceIds: { monthly: string; annual: string } };
-  pro: { monthly: number; annual: number; price_ids: { monthly: string; annual: string }; priceIds: { monthly: string; annual: string } };
+  plus: { monthly: number; annual: number; price_ids: { monthly: string; annual: string } };
+  pro: { monthly: number; annual: number; price_ids: { monthly: string; annual: string } };
 }
 
 async function fetchWithAuth(url: string, options: RequestInit = {}, token?: string): Promise<Response> {

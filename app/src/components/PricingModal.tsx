@@ -9,14 +9,13 @@ interface PricingModalProps {
 
 const DEFAULT_PLANS: Plans = {
   free: { monthly: 0, annual: 0 },
-  plus: { monthly: 12, annual: 100, price_ids: { monthly: '', annual: '' }, priceIds: { monthly: '', annual: '' } },
-  pro: { monthly: 24, annual: 200, price_ids: { monthly: '', annual: '' }, priceIds: { monthly: '', annual: '' } },
+  plus: { monthly: 12, annual: 100, price_ids: { monthly: '', annual: '' } },
+  pro: { monthly: 24, annual: 200, price_ids: { monthly: '', annual: '' } },
 };
 
 export function PricingModal({ isOpen, onClose }: PricingModalProps) {
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
   const [plans, setPlans] = useState<Plans>(DEFAULT_PLANS);
-
   const [isCheckoutLoading, setIsCheckoutLoading] = useState(false);
   const [error, setError] = useState('');
   const { session } = useAuth();
@@ -56,11 +55,9 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
 
   if (!isOpen) return null;
 
-  // Get price IDs from backend (handle both snake_case and camelCase)
+  // Get price IDs from backend
   const getPriceId = (tier: 'plus' | 'pro', cycle: 'monthly' | 'annual'): string => {
-    const tierData = plans[tier];
-    const ids = tierData.priceIds || tierData.price_ids;
-    return ids?.[cycle] || '';
+    return plans[tier]?.price_ids?.[cycle] || '';
   };
 
   const tiers = [
