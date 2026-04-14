@@ -6,18 +6,21 @@ import os
 import json
 import asyncio
 import uuid
-import base64
-import hmac
-import hashlib
+import base64 as _b64
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 
+import httpx
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Depends, BackgroundTasks, Request, Header
 from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
+import jwt
+from jwt.algorithms import ECAlgorithm, RSAAlgorithm
 from groq import Groq
 from supabase import create_client, Client
 import stripe
+from dotenv import load_dotenv
+load_dotenv()
 
 # Environment Variables
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
@@ -66,46 +69,30 @@ app.add_middleware(
 )
 
 
-def verify_jwt_token(token: str) -> Dict[str, Any]:
-    """Verify JWT token using Supabase JWT secret (HS256)."""
-    try:
-        parts = token.split(".")
-        if len(parts) != 3:
-            raise ValueError("Invalid token format")
-        
-        header_b64, payload_b64, signature_b64 = parts
-        
-        header_json = base64.urlsafe_b64decode(header_b64 + "==").decode("utf-8")
-        header = json.loads(header_json)
-        
-        # Reject tokens with alg: "none" (security vulnerability)
-        alg = header.get("alg")
-        if alg == "none":
-            raise ValueError("Algorithm 'none' is not allowed")
-        if alg != "HS256":
-            raise ValueError(f"Unsupported algorithm: {alg}")
-        
-        payload_json = base64.urlsafe_b64decode(payload_b64 + "==").decode("utf-8")
-        payload = json.loads(payload_json)
-        
-        exp = payload.get("exp")
-        if exp and datetime.utcnow().timestamp() > exp:
-            raise ValueError("Token expired")
-        
-        # Verify signature with timing-safe comparison
-        message = f"{header_b64}.{payload_b64}".encode("utf-8")
-        key = SUPABASE_JWT_SECRET.encode("utf-8")
-        expected_sig = base64.urlsafe_b64encode(
-            hmac.new(key, message, hashlib.sha256).digest()
-        ).decode("utf-8").rstrip("=")
-        
-        # Use hmac.compare_digest for timing-safe comparison
-        if not hmac.compare_digest(signature_b64, expected_sig):
-            raise ValueError("Invalid signature")
-        
-        return payload
-    except Exception as e:
-        raise ValueError(f"Token verification failed: {str(e)}")
+# JWKS cache — populated on first use
+_jwks_cache: Dict[str, Any] = {}
+
+
+async def _load_jwks() -> None:
+    """Fetch Supabase public keys from JWKS endpoint and cache them."""
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(f"{SUPABASE_URL}/auth/v1/.well-known/jwks.json", timeout=10)
+        resp.raise_for_status()
+        for key_data in resp.json().get("keys", []):
+            kid = key_data.get("kid", "default")
+            kty = key_data.get("kty", "")
+            if kty == "EC":
+                _jwks_cache[kid] = ECAlgorithm.from_jwk(json.dumps(key_data))
+            elif kty == "RSA":
+                _jwks_cache[kid] = RSAAlgorithm.from_jwk(json.dumps(key_data))
+
+
+async def _get_public_key(kid: Optional[str]) -> Any:
+    if not _jwks_cache:
+        await _load_jwks()
+    if kid and kid in _jwks_cache:
+        return _jwks_cache[kid]
+    return next(iter(_jwks_cache.values()), None)
 
 
 # Auth dependency
@@ -116,30 +103,60 @@ async def get_current_user(authorization: Optional[str] = Header(None)) -> Dict[
     token = authorization.replace("Bearer ", "") if authorization.startswith("Bearer ") else authorization
 
     try:
-        payload = verify_jwt_token(token)
+        # Read algorithm and key ID from token header (unverified)
+        header_b64 = token.split(".")[0]
+        header_b64 += "=" * (-len(header_b64) % 4)
+        header = json.loads(_b64.urlsafe_b64decode(header_b64))
+        token_alg = header.get("alg", "unknown")
+        kid = header.get("kid")
+
+        if token_alg in ("ES256", "ES384", "ES512", "RS256", "RS384", "RS512"):
+            # Asymmetric — verify with Supabase public key from JWKS
+            public_key = await _get_public_key(kid)
+            if not public_key:
+                raise HTTPException(status_code=401, detail="Could not retrieve Supabase signing key")
+            payload = jwt.decode(
+                token,
+                public_key,
+                algorithms=[token_alg],
+                options={"verify_aud": False}
+            )
+        elif token_alg in ("HS256", "HS384", "HS512"):
+            # Symmetric — verify with JWT secret
+            payload = jwt.decode(
+                token,
+                SUPABASE_JWT_SECRET,
+                algorithms=[token_alg],
+                options={"verify_aud": False}
+            )
+        else:
+            raise HTTPException(status_code=401, detail=f"Token algorithm '{token_alg}' is not permitted")
+
         user_id = payload.get("sub")
-        email = payload.get("email", "")
         if not user_id:
-            raise HTTPException(status_code=401, detail="Invalid token")
+            raise HTTPException(status_code=401, detail="Invalid token: no sub claim")
 
         # Get or create user profile
         profile_result = supabase.table("profiles").select("*").eq("id", user_id).execute()
-        if profile_result.data and len(profile_result.data) > 0:
-            profile = profile_result.data[0]
-        else:
+        if not profile_result.data:
+            user_email = payload.get("email", "")
             new_profile = supabase.table("profiles").insert({
                 "id": user_id,
-                "email": email,
-                "subscription_tier": "free"
+                "email": user_email,
+                "subscription_tier": "free",
+                "jobs_used_this_month": 0
             }).execute()
-            profile = new_profile.data[0] if new_profile.data else None
-        
-        if not profile:
-            raise HTTPException(status_code=401, detail="Failed to create user profile")
+            if not new_profile.data:
+                raise HTTPException(status_code=500, detail="Failed to create user profile")
+            profile = new_profile.data[0]
+        else:
+            profile = profile_result.data[0]
 
         return {"id": user_id, "profile": profile, "token": token}
-    except ValueError as e:
-        raise HTTPException(status_code=401, detail=str(e))
+    except HTTPException:
+        raise
+    except jwt.InvalidTokenError as e:
+        raise HTTPException(status_code=401, detail=f"JWT error: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=401, detail=f"Auth error: {str(e)}")
 
@@ -251,14 +268,15 @@ async def upload_file(
 
     # Check subscription limits for free tier
     if tier == "free":
-        job_count_result = supabase.table("jobs").select("id", count="exact").eq("user_id", user_id).execute()
-        count = job_count_result.count if hasattr(job_count_result, 'count') else 0
-        if count and count >= 3:
+        job_count = supabase.table("jobs").select("id", count="exact").eq("user_id", user_id).execute()
+        if job_count.count and job_count.count >= 3:
             raise HTTPException(status_code=403, detail="Free tier limit reached. Upgrade to continue.")
 
     # Parse modes
-    mode_list = [m.strip() for m in modes.split(",") if m.strip()]
-    if not mode_list:
+    mode_list = modes.split(",")
+
+    # Validate at least one mode
+    if not mode_list or mode_list == [""]:
         raise HTTPException(status_code=400, detail="At least one processing mode must be selected")
 
     # Save file to temp
@@ -275,11 +293,10 @@ async def upload_file(
         f.write(content)
 
     # Extract audio if video
-    is_video = file.content_type in VIDEO_MIME_TYPES
-    final_audio_path = audio_path if is_video else temp_path
-    
-    if is_video:
+    if file.content_type in VIDEO_MIME_TYPES:
         await extract_audio(temp_path, audio_path)
+    else:
+        audio_path = temp_path
 
     # Create job record
     job = supabase.table("jobs").insert({
@@ -294,9 +311,10 @@ async def upload_file(
     job_id = job.data[0]["id"]
 
     # Start background processing
-    background_tasks.add_task(process_job, job_id, final_audio_path, temp_path if is_video else None, mode_list, user_id)
+    background_tasks.add_task(process_job, job_id, audio_path, mode_list, user_id)
 
     estimated_seconds = 60
+
     return {"job_id": job_id, "estimated_seconds": estimated_seconds}
 
 
@@ -315,13 +333,14 @@ async def extract_audio(video_path: str, audio_path: str):
     await asyncio.to_thread(run_ffmpeg)
 
 
-async def process_job(job_id: str, audio_path: str, video_path: Optional[str], modes: List[str], user_id: str):
+async def process_job(job_id: str, audio_path: str, modes: List[str], user_id: str):
     """Background task to process the audio file."""
     try:
         supabase.table("jobs").update({"status": "processing", "progress": 10}).eq("id", job_id).execute()
         supabase.table("jobs").update({"progress": 20}).eq("id", job_id).execute()
 
         transcription_result = await groq_call_with_rotation(transcribe_with_groq, audio_path)
+
         supabase.table("jobs").update({"progress": 40}).eq("id", job_id).execute()
 
         output_urls = {}
@@ -377,13 +396,11 @@ async def process_job(job_id: str, audio_path: str, video_path: Optional[str], m
             "error": str(e)
         }).eq("id", job_id).execute()
     finally:
-        # Cleanup temp files
-        for path in [audio_path, video_path]:
-            if path and os.path.exists(path):
-                try:
-                    os.remove(path)
-                except:
-                    pass
+        try:
+            if os.path.exists(audio_path):
+                os.remove(audio_path)
+        except:
+            pass
 
 
 async def process_clean(text: str) -> str:
@@ -403,9 +420,11 @@ async def process_summary(text: str) -> str:
 async def process_clips(segments) -> List[Dict]:
     """Extract clip segments using LLM."""
     system_prompt = """You are a short-form video editor. Identify the 3-5 best segments for TikTok/Reels/Shorts (15-90 seconds each). Return ONLY valid JSON, no markdown, no explanation: [{"hook": "title", "start_time": 12.4, "end_time": 45.2, "text": "...", "reason": "why this works"}]"""
+
     segments_text = "\n".join([f"[{s.start:.1f}-{s.end:.1f}] {s.text}" for s in segments])
     response = await groq_call_with_rotation(llm_call_with_groq, system_prompt, segments_text)
     content = response.choices[0].message.content
+
     try:
         if "```" in content:
             content = content.split("```")[1].replace("json", "").strip()
@@ -417,17 +436,17 @@ async def process_clips(segments) -> List[Dict]:
 async def upload_json_to_storage(path: str, data: dict):
     """Upload JSON to Supabase Storage."""
     json_bytes = json.dumps(data, indent=2).encode("utf-8")
-    def do_upload():
-        return supabase.storage.from_("outputs").upload(path, json_bytes, {"content-type": "application/json"})
-    await asyncio.to_thread(do_upload)
+    await asyncio.to_thread(
+        lambda: supabase.storage.from_("outputs").upload(path, json_bytes, {"content-type": "application/json"})
+    )
 
 
 async def upload_text_to_storage(path: str, text: str):
     """Upload text to Supabase Storage."""
     text_bytes = text.encode("utf-8")
-    def do_upload():
-        return supabase.storage.from_("outputs").upload(path, text_bytes, {"content-type": "text/plain"})
-    await asyncio.to_thread(do_upload)
+    await asyncio.to_thread(
+        lambda: supabase.storage.from_("outputs").upload(path, text_bytes, {"content-type": "text/plain"})
+    )
 
 
 def get_public_url(path: str) -> str:
@@ -438,21 +457,20 @@ def get_public_url(path: str) -> str:
 # Get job status
 @app.get("/job/{job_id}")
 async def get_job(job_id: str, user: Dict = Depends(get_current_user)):
-    job_result = supabase.table("jobs").select("*").eq("id", job_id).eq("user_id", user["id"]).execute()
-    if not job_result.data or len(job_result.data) == 0:
+    job = supabase.table("jobs").select("*").eq("id", job_id).eq("user_id", user["id"]).single().execute()
+    if not job.data:
         raise HTTPException(status_code=404, detail="Job not found")
-    return job_result.data[0]
+    return job.data
 
 
 # Download redirect
 @app.get("/download/{job_id}/{file_type}")
 async def download_file(job_id: str, file_type: str, user: Dict = Depends(get_current_user)):
-    job_result = supabase.table("jobs").select("*").eq("id", job_id).eq("user_id", user["id"]).execute()
-    if not job_result.data or len(job_result.data) == 0:
+    job = supabase.table("jobs").select("*").eq("id", job_id).eq("user_id", user["id"]).single().execute()
+    if not job.data:
         raise HTTPException(status_code=404, detail="Job not found")
-    
-    job = job_result.data[0]
-    output_urls = job.get("output_urls", {})
+
+    output_urls = job.data.get("output_urls", {})
     if file_type not in output_urls:
         raise HTTPException(status_code=404, detail="File type not found")
 
@@ -465,20 +483,6 @@ async def create_checkout_session(data: dict, user: Dict = Depends(get_current_u
     price_id = data.get("price_id")
     if not price_id:
         raise HTTPException(status_code=400, detail="Price ID required")
-    
-    # Validate price ID format
-    if not price_id.startswith("price_"):
-        raise HTTPException(status_code=400, detail=f"Invalid price ID format: {price_id}")
-    
-    # Check if price ID is configured
-    valid_price_ids = [
-        STRIPE_PLUS_MONTHLY_PRICE_ID,
-        STRIPE_PLUS_ANNUAL_PRICE_ID,
-        STRIPE_PRO_MONTHLY_PRICE_ID,
-        STRIPE_PRO_ANNUAL_PRICE_ID
-    ]
-    if price_id not in valid_price_ids:
-        raise HTTPException(status_code=400, detail=f"Price ID not recognized: {price_id}")
 
     try:
         session = stripe.checkout.Session.create(
@@ -496,15 +500,6 @@ async def create_checkout_session(data: dict, user: Dict = Depends(get_current_u
         raise HTTPException(status_code=400, detail=str(e))
 
 
-def get_tier_from_price_id(price_id: str) -> str:
-    """Determine subscription tier from Stripe price ID."""
-    if price_id in [STRIPE_PLUS_MONTHLY_PRICE_ID, STRIPE_PLUS_ANNUAL_PRICE_ID]:
-        return "plus"
-    elif price_id in [STRIPE_PRO_MONTHLY_PRICE_ID, STRIPE_PRO_ANNUAL_PRICE_ID]:
-        return "pro"
-    return "free"
-
-
 # Stripe webhook
 @app.post("/stripe-webhook")
 async def stripe_webhook(request: Request):
@@ -515,55 +510,36 @@ async def stripe_webhook(request: Request):
         event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
     except stripe.error.SignatureVerificationError:
         raise HTTPException(status_code=400, detail="Invalid signature")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Webhook error: {str(e)}")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Webhook error")
 
-    event_type = event["type"]
-    
-    if event_type == "checkout.session.completed":
+    if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
         user_id = session.get("metadata", {}).get("user_id")
         price_id = session.get("metadata", {}).get("price_id")
         customer_id = session.get("customer")
 
-        # Return error if user_id is missing (don't fail silently)
-        if not user_id:
-            raise HTTPException(status_code=400, detail="Missing user_id in session metadata")
-        
-        if not price_id:
-            raise HTTPException(status_code=400, detail="Missing price_id in session metadata")
+        tier = "free"
+        if price_id in [STRIPE_PLUS_MONTHLY_PRICE_ID, STRIPE_PLUS_ANNUAL_PRICE_ID]:
+            tier = "plus"
+        elif price_id in [STRIPE_PRO_MONTHLY_PRICE_ID, STRIPE_PRO_ANNUAL_PRICE_ID]:
+            tier = "pro"
 
-        tier = get_tier_from_price_id(price_id)
-        
-        supabase.table("profiles").update({
-            "subscription_tier": tier,
-            "stripe_customer_id": customer_id
-        }).eq("id", user_id).execute()
-
-    elif event_type == "customer.subscription.updated":
-        subscription = event["data"]["object"]
-        customer_id = subscription.get("customer")
-        
-        # Get the price ID from the subscription items
-        items = subscription.get("items", {}).get("data", [])
-        if items:
-            price_id = items[0].get("price", {}).get("id")
-            if price_id and customer_id:
-                tier = get_tier_from_price_id(price_id)
-                supabase.table("profiles").update({
-                    "subscription_tier": tier
-                }).eq("stripe_customer_id", customer_id).execute()
-
-    elif event_type == "customer.subscription.deleted":
-        subscription = event["data"]["object"]
-        customer_id = subscription.get("customer")
-
-        if customer_id:
+        if user_id:
             supabase.table("profiles").update({
-                "subscription_tier": "free"
-            }).eq("stripe_customer_id", customer_id).execute()
+                "subscription_tier": tier,
+                "stripe_customer_id": customer_id
+            }).eq("id", user_id).execute()
 
-    return {"status": "ok", "event": event_type}
+    elif event["type"] == "customer.subscription.deleted":
+        subscription = event["data"]["object"]
+        customer_id = subscription.get("customer")
+
+        supabase.table("profiles").update({
+            "subscription_tier": "free"
+        }).eq("stripe_customer_id", customer_id).execute()
+
+    return {"status": "ok"}
 
 
 if __name__ == "__main__":
