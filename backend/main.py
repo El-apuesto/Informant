@@ -16,6 +16,28 @@ from jose import jwt, JWTError
 from groq import Groq
 from supabase import create_client, Client
 import stripe
+import threading
+import oci
+import time
+
+def claim_oracle_instance():
+    config = oci.config.from_file()
+    compute = oci.core.ComputeClient(config)
+    # ... your instance details ...
+    while True:
+        try:
+            result = compute.launch_instance(INSTANCE_DETAILS)
+            print("✅ Claimed!", result.data.id)
+            break
+        except oci.exceptions.ServiceError as e:
+            if "Out of host capacity" in str(e.message):
+                time.sleep(60)
+            else:
+                break
+
+# Start it when FastAPI boots
+threading.Thread(target=claim_oracle_instance, daemon=True).start()
+
 
 # Environment Variables
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
